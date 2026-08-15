@@ -1,0 +1,8 @@
+- insert:
+    - id: imagegen
+      name: dsh-imagegen
+      config:
+        runtimeConfigPath: ~/.dsh/dsh-imagegen.json
+        outputDirectory: generated-images
+        timeoutMs: 180000
+        maxImageBytes: 20971520
