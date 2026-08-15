@@ -1,5 +1,7 @@
 # dsh-imagegen
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Provider-neutral image generation plugin for DeepSeek Harness. It registers the `image_generate` agent tool and supports:
 
 - Gemini-compatible `generateContent` endpoints
