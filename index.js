@@ -7,7 +7,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 const name = 'imagegen'
-const inject = ['tools', 'systemPrompt']
+const inject = ['tools', 'systemPrompt', 'webServer']
 
 const ASPECT_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
 const IMAGE_SIZES = ['1K', '2K', '4K']
@@ -15,6 +15,8 @@ const IMAGE2_SIZES = ['1024x1024', '1024x1536', '1536x1024', 'auto']
 const IMAGE2_QUALITIES = ['low', 'medium', 'high', 'auto']
 const PROTOCOLS = ['auto', 'gemini', 'image2']
 const SETTINGS_NAMESPACE = settingsNamespace('imagegen')
+const SETTINGS_DESCRIBE_PATH = '/api/imagegen/settings/describe'
+const SETTINGS_MUTATE_PATH = '/api/imagegen/settings/mutate'
 
 const Config = z.object({
   protocol: z.union(PROTOCOLS).default('image2').description('Image API protocol.'),
@@ -287,6 +289,125 @@ async function materializeImage(image, maxImageBytes, signal) {
   return { bytes, mimeType, extension }
 }
 
+function isLoopbackRequest(request) {
+  const address = request.socket.remoteAddress
+  if (address !== '127.0.0.1' && address !== '::1' && address !== '::ffff:127.0.0.1') return false
+  if (request.headers['sec-fetch-site'] === 'cross-site') return false
+  const host = request.headers.host
+  if (typeof host !== 'string') return false
+  try {
+    const hostUrl = new URL(`http://${host}`)
+    if (hostUrl.hostname !== '127.0.0.1' && hostUrl.hostname !== 'localhost' && hostUrl.hostname !== '[::1]') return false
+    const origin = request.headers.origin
+    return origin === undefined || new URL(origin).host === hostUrl.host
+  } catch {
+    return false
+  }
+}
+
+function writeJson(response, status, body) {
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'referrer-policy': 'no-referrer',
+  })
+  response.end(JSON.stringify(body))
+}
+
+async function readJsonBody(request) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > 64 * 1024) return undefined
+    chunks.push(chunk)
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    return undefined
+  }
+}
+
+function settingsView(settings) {
+  const descriptor = settings.describe({ redactSecrets: true })
+    .find((entry) => entry.ns === SETTINGS_NAMESPACE)
+  if (descriptor === undefined) return undefined
+  return {
+    value: descriptor.value,
+    ...(descriptor.base === undefined ? {} : { base: descriptor.base }),
+    ...(descriptor.user === undefined ? {} : { user: descriptor.user }),
+    revision: descriptor.revision,
+  }
+}
+
+function installSettingsBridge(ctx) {
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.effect(() => {
+      const guard = (request, response) => {
+        if (!isLoopbackRequest(request)) {
+          writeJson(response, 403, { ok: false, message: 'loopback requests only' })
+          return false
+        }
+        if (request.method !== 'POST') {
+          writeJson(response, 405, { ok: false, message: 'method not allowed' })
+          return false
+        }
+        return true
+      }
+      const disposers = [
+        settingsCtx.webServer.register({
+          kind: 'exact',
+          path: SETTINGS_DESCRIBE_PATH,
+          handler: async (request, response) => {
+            if (!guard(request, response)) return
+            writeJson(response, 200, {
+              ok: true,
+              value: {
+                descriptor: settingsView(settingsCtx.settings),
+                writable: settingsCtx.settings.writable !== false,
+              },
+            })
+          },
+        }),
+        settingsCtx.webServer.register({
+          kind: 'exact',
+          path: SETTINGS_MUTATE_PATH,
+          handler: async (request, response) => {
+            if (!guard(request, response)) return
+            const body = await readJsonBody(request)
+            if (body === undefined || !Array.isArray(body.ops)) {
+              writeJson(response, 400, { ok: false, message: 'invalid settings request' })
+              return
+            }
+            try {
+              await settingsCtx.settings.mutate(
+                SETTINGS_NAMESPACE,
+                body.ops,
+                typeof body.expectedRevision === 'number' ? body.expectedRevision : undefined,
+              )
+              writeJson(response, 200, {
+                ok: true,
+                value: {
+                  descriptor: settingsView(settingsCtx.settings),
+                  writable: settingsCtx.settings.writable !== false,
+                },
+              })
+            } catch (error) {
+              writeJson(response, 200, {
+                ok: false,
+                message: error instanceof Error ? error.message : String(error),
+              })
+            }
+          },
+        }),
+      ]
+      return () => {
+        for (const dispose of disposers) dispose()
+      }
+    }, 'imagegen: settings bridge')
+  })
+}
+
 function apply(ctx, config) {
   validateSettings(config)
   let current = () => config
@@ -297,6 +418,7 @@ function apply(ctx, config) {
     onChange: () => {},
     validate: validateSettings,
   })
+  installSettingsBridge(ctx)
 
   ctx.systemPrompt.section({
     name: 'tool:image_generate',

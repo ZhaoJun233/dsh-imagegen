@@ -7,7 +7,8 @@ window.__ModuleLoader__.load({
     const { createSnapshotStore } = require('@deepseek-ai/dsh-client-runtime/client')
 
     const NS = 'imagegen'
-    const SETTINGS_NAMESPACE = 'imagegen'
+    const SETTINGS_DESCRIBE_PATH = '/api/imagegen/settings/describe'
+    const SETTINGS_MUTATE_PATH = '/api/imagegen/settings/mutate'
     const PROTOCOLS = ['auto', 'gemini', 'image2']
     const QUALITIES = ['low', 'medium', 'high', 'auto']
     const DEFAULTS = {
@@ -141,6 +142,87 @@ window.__ModuleLoader__.load({
       }
       if (field === 'defaultModel' || field === 'outputDirectory') return value.trim().length > 0
       return true
+    }
+
+    class ImagegenSettingsScope {
+      constructor() {
+        this.store = createSnapshotStore({
+          status: 'loading',
+          value: undefined,
+          base: undefined,
+          user: undefined,
+          revision: undefined,
+          writable: false,
+        })
+        void this.load()
+      }
+
+      getSnapshot() {
+        return this.store.getSnapshot()
+      }
+
+      subscribe(listener) {
+        return this.store.subscribe(listener)
+      }
+
+      async post(path, body) {
+        const response = await fetch(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const payload = await response.json()
+        if (!response.ok || payload?.ok !== true) throw new Error(payload?.message ?? `Settings request failed (${response.status})`)
+        return payload.value
+      }
+
+      accept(result) {
+        const descriptor = result?.descriptor
+        this.store.set(descriptor === undefined ? {
+          status: 'unavailable',
+          value: undefined,
+          base: undefined,
+          user: undefined,
+          revision: undefined,
+          writable: Boolean(result?.writable),
+        } : {
+          status: 'ready',
+          value: descriptor.value,
+          base: descriptor.base,
+          user: descriptor.user,
+          revision: descriptor.revision,
+          writable: Boolean(result?.writable),
+        })
+      }
+
+      async load() {
+        try {
+          this.accept(await this.post(SETTINGS_DESCRIBE_PATH, {}))
+        } catch {
+          this.accept({ descriptor: undefined, writable: false })
+        }
+      }
+
+      async write(op) {
+        const revision = this.getSnapshot().revision
+        try {
+          this.accept(await this.post(SETTINGS_MUTATE_PATH, {
+            ops: [op],
+            ...(revision === undefined ? {} : { expectedRevision: revision }),
+          }))
+        } catch (error) {
+          await this.load()
+          throw error
+        }
+      }
+
+      set(field, value) {
+        return this.write({ op: 'set', path: [field], value })
+      }
+
+      unset(field) {
+        return this.write({ op: 'unset', path: [field] })
+      }
     }
 
     class SettingsCardController {
@@ -318,12 +400,11 @@ window.__ModuleLoader__.load({
       )
     }
 
-    const inject = ['slots', 'locale', 'settingsScope', 'connection', 'remote']
+    const inject = ['slots', 'locale']
 
     function apply(ctx) {
       ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'imagegen: dictionaries')
-      const binder = ctx.get('webUiSettings') ?? ctx.settingsScope
-      const scope = binder.bind({ namespace: SETTINGS_NAMESPACE })
+      const scope = new ImagegenSettingsScope()
       const controller = new SettingsCardController(scope)
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
         name: 'settings.plugin.item',

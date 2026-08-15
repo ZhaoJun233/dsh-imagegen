@@ -1,5 +1,7 @@
 # dsh-imagegen
 
+<img src="./icon.svg" alt="dsh-imagegen 图标" width="96" height="96">
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 这是一个面向 DeepSeek Harness 的通用生图插件，不绑定具体服务商。插件会注册 `image_generate` Agent 工具，并支持：

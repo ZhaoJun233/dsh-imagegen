@@ -1,6 +1,6 @@
 {
   "name": "dsh-imagegen",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Provider-neutral image generation tool for DeepSeek Harness",
   "keywords": [
@@ -30,6 +30,7 @@
     "index.js",
     "client.js",
     "cordis.patch.yml",
+    "icon.svg",
     "README.md",
     "README.zh-CN.md"
   ],
