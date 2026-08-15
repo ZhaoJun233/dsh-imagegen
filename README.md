@@ -13,7 +13,13 @@ Provider-neutral image generation plugin for DeepSeek Harness. It registers the 
 
 ## Install
 
-Add the package to a DSH Web profile:
+Install directly from GitHub into the DSH Web profile:
+
+```powershell
+dsh plugin --profile web add github:ZhaoJun233/dsh-imagegen
+```
+
+For local development, link the checkout instead:
 
 ```powershell
 dsh plugin --profile web add link:C:\path\to\dsh-imagegen

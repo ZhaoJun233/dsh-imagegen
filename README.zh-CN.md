@@ -14,7 +14,13 @@
 
 ## 安装
 
-将本地插件添加到 DSH Web profile：
+从 GitHub 直接安装到 DSH Web profile：
+
+```powershell
+dsh plugin --profile web add github:ZhaoJun233/dsh-imagegen
+```
+
+本地开发时可改为链接当前检出目录：
 
 ```powershell
 dsh plugin --profile web add link:C:\path\to\dsh-imagegen

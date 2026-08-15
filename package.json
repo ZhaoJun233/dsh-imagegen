@@ -3,6 +3,21 @@
   "version": "0.2.0",
   "private": true,
   "description": "Provider-neutral image generation tool for DeepSeek Harness",
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "image-generation",
+    "gemini",
+    "openai-images"
+  ],
+  "homepage": "https://github.com/ZhaoJun233/dsh-imagegen#readme",
+  "bugs": {
+    "url": "https://github.com/ZhaoJun233/dsh-imagegen/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZhaoJun233/dsh-imagegen.git"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
