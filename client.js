@@ -408,6 +408,7 @@ window.__ModuleLoader__.load({
       const controller = new SettingsCardController(scope)
       ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
         name: 'settings.plugin.item',
+        key: 'imagegen',
         id: 'imagegen',
         order: 80,
         locale: NS,
